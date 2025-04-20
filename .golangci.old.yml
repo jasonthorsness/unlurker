@@ -1,0 +1,50 @@
+linters:
+  enable-all: true
+  disable:
+    - funlen
+    - varnamelen
+    - ireturn
+    - containedctx
+    - testpackage
+    - depguard
+
+linters-settings:
+  exhaustruct:
+    exclude:
+      - ^net/http\.Transport
+      - ^net/http\.Client
+      - ^github.com/spf13/cobra\.Command
+  govet:
+    enable-all: true
+  nlreturn:
+    block-size: 2
+  wsl:
+    allow-cuddle-declarations: true
+  mnd:
+    ignored-numbers:
+      - "2"
+  wrapcheck:
+    ignoreSigRegexps:
+      - ^.*github\.com\/jasonthorsness\/unlurker/hn\..*
+
+issues:
+  exclude-dirs:
+    - third_party$
+    - builtin$
+    - examples$
+  exclude-generated: lax
+  exclude-use-default: false
+  exclude-rules:
+    - path: .*\.go$
+      linters:
+        - wrapcheck
+      source: inner\.
+    - path: .*\.go$
+      linters:
+        - revive
+      text: "should have comment"
+    - path: _test\.go$
+      linters:
+        - mnd
+        - goconst
+        - cyclop

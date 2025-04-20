@@ -1,0 +1,133 @@
+name: CI & Release
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  ci:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.24.2"
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.0.2/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.0.2
+
+      - name: Lint
+        run: golangci-lint run
+
+      - name: Test
+        run: go test -race ./... -tags sqlite_math_functions
+
+      - name: Build
+        run: make build
+
+  build-linux:
+    name: Build Linux (musl)
+    needs: ci
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v3
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-go@v4
+        with: { go-version: "1.24.2" }
+
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - run: |
+          curl -sSL https://musl.cc/aarch64-linux-musl-cross.tgz \
+            | sudo tar xz -C /usr/local
+
+      - run: echo "/usr/local/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
+
+      - run: |
+          sudo tee /usr/local/bin/cc << 'EOF' > /dev/null
+          #!/usr/bin/env bash
+          if [[ "$GOARCH" == "arm64" ]]; then
+            exec aarch64-linux-musl-gcc "$@"
+          else
+            exec musl-gcc "$@"
+          fi
+          EOF
+      - run: sudo chmod +x /usr/local/bin/cc
+      - uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: release --clean --skip=publish --config .goreleaser.linux.yml
+        env:
+          CGO_ENABLED: 1
+          CC: cc
+          CGO_LDFLAGS: "-static -s"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: dist/*.tar.gz
+
+  build-macos:
+    name: Build macOS
+    needs: ci
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v3
+        with: { fetch-depth: 0 }
+
+      - uses: actions/setup-go@v4
+        with: { go-version: "1.24.2" }
+
+      - uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: release --clean --skip=publish --config .goreleaser.darwin.yml
+        env:
+          CGO_ENABLED: 1
+          CC: cc
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: dist/*.tar.gz
+
+  release:
+    name: Create GitHub Release & Upload Assets
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Publish Release & Attach Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/linux-artifacts/*.tar.gz
+            dist/macos-artifacts/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

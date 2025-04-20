@@ -1,0 +1,36 @@
+version: 2
+builds:
+  - id: hn
+    main: ./cmd/hn
+    binary: hn
+    tags:
+      - sqlite_math_functions
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+  - id: unl
+    main: ./cmd/unl
+    binary: unl
+    tags:
+      - sqlite_math_functions
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: hn
+    ids: [hn]
+    name_template: "hn_{{ .Os }}_{{ .Arch }}"
+    files: []
+
+  - id: unl
+    ids: [unl]
+    name_template: "unl_{{ .Os }}_{{ .Arch }}"
+    files: []

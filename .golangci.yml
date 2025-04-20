@@ -1,0 +1,62 @@
+version: "2"
+linters:
+  default: all
+  disable:
+    - funlen
+    - varnamelen
+    - ireturn
+    - containedctx
+    - testpackage
+    - depguard
+  settings:
+    exhaustruct:
+      exclude:
+        # structs intended to be partially initialized
+        - ^net\/http\.Transport
+        - ^net\/http\.Client
+        - ^github.com\/spf13\/cobra\.Command
+    govet:
+      enable-all: true
+    nlreturn:
+      block-size: 2
+    wsl:
+      allow-cuddle-declarations: true
+    mnd:
+      ignored-numbers:
+        - "2"
+    wrapcheck:
+      ignore-sig-regexps:
+        - ^.*github\.com\/jasonthorsness\/unlurker/hn\..*
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # no error wrapping for plain wrappers with "inner" field
+      - path: .*\.go$
+        linters:
+          - wrapcheck
+        source: inner\.
+      # exclude from test files
+      - path: _test\.go$
+        linters:
+          - mnd
+          - goconst
+          - cyclop
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
