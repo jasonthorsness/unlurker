@@ -1,5 +1,6 @@
 # Unlurker
 
+as
 [![Release](https://img.shields.io/github/v/release/jasonthorsness/unlurker?label=release&style=flat-square)](https://github.com/jasonthorsness/unlurker/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jasonthorsness/unlurker)](https://goreportcard.com/report/github.com/jasonthorsness/unlurker)
 [![License](https://img.shields.io/github/license/jasonthorsness/unlurker?style=flat-square)](https://github.com/jasonthorsness/unlurker/blob/main/LICENSE)
