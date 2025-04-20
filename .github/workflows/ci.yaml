@@ -1,0 +1,58 @@
+name: CI & Release
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  ci:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.24.2"
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.0.2/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.0.2
+
+      - name: Lint
+        run: golangci-lint run
+
+      - name: Test
+        run: go test -race ./... -tags sqlite_math_functions
+
+      - name: Build
+        run: make build
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.24.2"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: release --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
