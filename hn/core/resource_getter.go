@@ -60,7 +60,7 @@ func (r *ResourceGetter) getResourceFromCache(path string, value any) (bool, err
 		return true, fmt.Errorf("get value must be a pointer: %w", ErrTypeNotAllowed)
 	}
 
-	vVal := reflect.ValueOf(found[0])
+	vVal := reflect.ValueOf(found[0].Value)
 	if rv.Elem().Type() != vVal.Type() {
 		return true, fmt.Errorf(
 			"type mismatch: expected pointer to %v, got pointer to %v: %w",

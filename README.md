@@ -20,8 +20,7 @@ This repo releases two tools and a client library for the
 
 ## Installation
 
-Install on Linux or Mac OS to `/usr/local/bin` for current user (requires `curl`, `tar`, and `sudo`
-write access to `/usr/local/bin`.)
+Install on Linux or Mac OS to `/usr/local/bin` (requires `curl`, `tar`, and `sudo`).
 
 ### unl
 
