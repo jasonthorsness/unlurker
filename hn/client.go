@@ -116,10 +116,13 @@ func (c *Client) GetActive(ctx context.Context, maxID int, activeAfter time.Time
 	moreIDs := make([]int, 0, 2)
 
 	err := itemStream.SearchUnordered(ids, func(id int, item *Item) (bool, []int, error) {
-		isActive := time.Unix(item.Time, 0).After(activeAfter) && !item.Dead && !item.Deleted
-		if !isActive {
+		isActiveByTime := time.Unix(item.Time, 0).After(activeAfter)
+		if !isActiveByTime {
 			largestKnownInactiveID = max(id, largestKnownInactiveID)
+		}
 
+		isActive := isActiveByTime && !item.Dead && !item.Deleted
+		if !isActive {
 			_, ok := queuedAsParent[id]
 			if !ok {
 				return true, nil, nil

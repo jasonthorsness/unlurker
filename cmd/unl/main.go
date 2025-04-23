@@ -124,8 +124,8 @@ func buildCommand(
 	}
 
 	const (
-		defaultMaxAge = 24 * time.Hour
-		defaultWindow = 1 * time.Hour
+		defaultMaxAge = 8 * time.Hour
+		defaultWindow = 30 * time.Minute
 		defaultMinBy  = 3
 	)
 

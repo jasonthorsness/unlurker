@@ -112,7 +112,8 @@ func TestWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const testWindowMinutes = 30
+	const expectedDefault = 30 * time.Minute
+	const testWindowMinutes = 20
 
 	hasOver := false
 
@@ -124,15 +125,15 @@ func TestWindow(t *testing.T) {
 		}
 
 		if strings.Contains(scanner.Text(), colorLightBlue) {
-			if duration > time.Hour {
-				t.Fatalf("expected default to be one hour")
+			if duration > expectedDefault {
+				t.Fatalf("expected default to be %v", expectedDefault)
 			}
 
 			if duration > testWindowMinutes*time.Minute {
 				hasOver = true
 			}
-		} else if duration < time.Hour {
-			t.Fatalf("expected default to be one hour")
+		} else if duration < expectedDefault {
+			t.Fatalf("expected default to be %v", expectedDefault)
 		}
 	}
 
@@ -278,6 +279,11 @@ func exec(t *testing.T, args ...string) ([]byte, error) {
 	defaultCachePath := filepath.Join(t.TempDir(), "hn.db")
 
 	cmd := buildCommand(testdata.Getter, testdata.Clock, 120, false, defaultCachePath)
+
+	if args == nil {
+		args = []string{}
+	}
+
 	cmd.SetArgs(args)
 
 	stdout := os.Stdout

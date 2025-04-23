@@ -6,7 +6,9 @@ import (
 	"html"
 	"io"
 	"math"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 	"unicode"
 
@@ -88,7 +90,11 @@ func (pw *prettyWriter) writeItemIndent(item *hn.Item, showText bool, isActive b
 		case item.Deleted:
 			text = "[deleted]"
 		case item.Title != "":
-			text = item.Title
+			if item.URL != "" {
+				text = item.Title + " (" + prettyFormatURL(item.URL) + ")"
+			} else {
+				text = item.Title
+			}
 		default:
 			text = item.Text
 		}
@@ -250,5 +256,20 @@ func prettyFormatDuration(d time.Duration) string {
 	hours := totalMinutes / minutesPerHour
 	minutes := totalMinutes % minutesPerHour
 
-	return fmt.Sprintf("%dh%2dm", hours, minutes)
+	return fmt.Sprintf("%dh %2dm", hours, minutes)
+}
+
+func prettyFormatURL(v string) string {
+	u, err := url.Parse(v)
+	if err != nil {
+		return ""
+	}
+
+	host := strings.TrimPrefix(u.Hostname(), "www.")
+	if host == "github.com" {
+		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+		return host + "/" + parts[0]
+	}
+
+	return host
 }
