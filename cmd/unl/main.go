@@ -2,7 +2,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/jasonthorsness/unlurker/hn"
 	"github.com/jasonthorsness/unlurker/hn/core"
+	"github.com/jasonthorsness/unlurker/unl"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -107,7 +107,7 @@ func buildCommand(
 			activeAfter := now.Add(-window)
 			agedAfter := now.Add(-maxAge)
 
-			items, allByParent, err := getActive(ctx, client, activeAfter, agedAfter, minBy, limit)
+			items, allByParent, err := unl.GetActive(ctx, client, activeAfter, agedAfter, minBy, limit)
 			if err != nil {
 				return err
 			}
@@ -138,69 +138,6 @@ func buildCommand(
 	cmd.Flags().BoolVar(&noColor, "no-color", defaultNoColor, "disable color")
 
 	return cmd
-}
-
-func getActive(
-	ctx context.Context,
-	client *hn.Client,
-	activeAfter time.Time,
-	agedAfter time.Time,
-	minBy int,
-	limit int,
-) ([]*hn.Item, map[int]hn.ItemSet, error) {
-	maxID, err := client.GetMaxItem(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get max item: %w", err)
-	}
-
-	all, err := client.GetActive(ctx, maxID, activeAfter)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get active items: %w", err)
-	}
-
-	allByRoot, err := all.GroupByRoot()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get group by root: %w", err)
-	}
-
-	activeRoots := getActiveRoots(allByRoot, agedAfter, activeAfter, minBy)
-
-	items := activeRoots.Slice()
-	if limit > 0 && len(items) > limit {
-		items = items[:limit]
-	}
-
-	allByParent, _, err := all.GroupByParent()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get group by root: %w", err)
-	}
-
-	return items, allByParent, nil
-}
-
-func getActiveRoots(
-	allByRoot map[*hn.Item]hn.ItemSet,
-	agedAfter time.Time,
-	activeAfter time.Time,
-	minBy int,
-) hn.ItemSet {
-	activeRoots := make(hn.ItemSet, len(allByRoot))
-
-	for root, tree := range allByRoot {
-		if root.Dead || root.Deleted || !time.Unix(root.Time, 0).After(agedAfter) {
-			continue
-		}
-
-		active := tree.Filter(func(item *hn.Item) bool {
-			return !item.Dead && !item.Deleted && time.Unix(item.Time, 0).After(activeAfter)
-		})
-
-		if len(active.GroupByBy()) >= minBy {
-			activeRoots[root.ID] = root
-		}
-	}
-
-	return activeRoots
 }
 
 func writeActiveToStdout(

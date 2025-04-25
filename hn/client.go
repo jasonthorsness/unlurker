@@ -155,6 +155,8 @@ func getActiveTryEnqueueParent(item *Item, queuedAsParent map[int]struct{}, more
 	if !ok {
 		queuedAsParent[parentID] = struct{}{}
 
+		// It's possible that this id has already been queued, but maybe not as a parent to be traced to the root,
+		// so it must be queued again after being added to the queuedAsParent map.
 		*moreIDs = append(*moreIDs, parentID)
 	}
 }

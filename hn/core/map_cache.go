@@ -97,7 +97,7 @@ func (c *MapCache[TKey, TValue]) Put(k TKey, v TValue) {
 
 	if now.Sub(c.lastPurge) > c.ttl {
 		// rotate the maps
-		c.m[c.mi] = make(map[TKey]mapCacheEntry[TValue], len(c.new()))
+		c.m[c.mi] = make(map[TKey]mapCacheEntry[TValue], len(c.new())*2)
 		c.mi = (c.mi + 1) % len(c.m)
 		c.lastPurge = now
 	}

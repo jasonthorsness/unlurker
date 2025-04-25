@@ -192,12 +192,17 @@ func (co clientOptions) buildClientInternal(ctx context.Context) (_ *Client, err
 
 	outer := core.NewBulkTransformGetter(inner, unmarshalItemStreamValue)
 
+	var mapCache *core.MapCache[int, ItemStreamValue[*Item]]
+	var shouldCache func(int, ItemStreamValue[*Item]) bool
+
 	if co.cacheFor != 0 {
-		mapCache := core.NewMapCache[int, ItemStreamValue[*Item]](co.clock, co.cacheFor)
-		outer = core.NewBulkMapCacheGetter(outer, mapCache, func(_ int, item ItemStreamValue[*Item]) bool {
+		mapCache = core.NewMapCache[int, ItemStreamValue[*Item]](co.clock, co.cacheFor)
+		shouldCache = func(_ int, item ItemStreamValue[*Item]) bool {
 			return item.Err == nil && item.Item.Type != NullBody
-		})
+		}
 	}
+
+	outer = core.NewBulkSingleFlightGetter(outer, mapCache, shouldCache)
 
 	pool := &sync.Pool{New: func() any { return &bytes.Buffer{} }}
 	raw := core.NewBulkTransformGetter(inner, func(id int, reader io.ReadCloser) ItemStreamValue[io.ReadCloser] {

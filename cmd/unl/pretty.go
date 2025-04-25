@@ -6,13 +6,12 @@ import (
 	"html"
 	"io"
 	"math"
-	"net/url"
 	"strconv"
-	"strings"
 	"time"
 	"unicode"
 
 	"github.com/jasonthorsness/unlurker/hn"
+	"github.com/jasonthorsness/unlurker/unl"
 )
 
 const (
@@ -80,24 +79,11 @@ func findActiveChild(item *hn.Item, allByParent map[int]hn.ItemSet, activeAfter 
 func (pw *prettyWriter) writeItemIndent(item *hn.Item, showText bool, isActive bool, indent string) {
 	link := "https://news.ycombinator.com/item?id=" + strconv.Itoa(item.ID)
 	by := item.By
-	age := prettyFormatDuration(pw.now.Sub(time.Unix(item.Time, 0)))
+	age := unl.PrettyFormatDuration(pw.now.Sub(time.Unix(item.Time, 0)))
 	text := ""
 
 	if showText {
-		switch {
-		case item.Dead:
-			text = "[dead]"
-		case item.Deleted:
-			text = "[deleted]"
-		case item.Title != "":
-			if item.URL != "" {
-				text = item.Title + " (" + prettyFormatURL(item.URL) + ")"
-			} else {
-				text = item.Title
-			}
-		default:
-			text = item.Text
-		}
+		text = unl.PrettyFormatTitle(item, true)
 	}
 
 	pw.lines = append(pw.lines, prettyLine{link, by, age, indent, text, item.Parent == nil, isActive})
@@ -240,36 +226,4 @@ func writeToText(buf *bytes.Buffer, line *prettyLine, showColor bool, maxWidth i
 		rn, _ = buf.WriteRune(r)
 		remaining--
 	}
-}
-
-// prettyFormatDuration formats a positive duration for columnar display.
-// Output will align in columns if left-padded.
-func prettyFormatDuration(d time.Duration) string {
-	totalMinutes := int(d.Minutes())
-
-	const minutesPerHour = 60
-
-	if totalMinutes < minutesPerHour {
-		return fmt.Sprintf("%dm", totalMinutes)
-	}
-
-	hours := totalMinutes / minutesPerHour
-	minutes := totalMinutes % minutesPerHour
-
-	return fmt.Sprintf("%dh %2dm", hours, minutes)
-}
-
-func prettyFormatURL(v string) string {
-	u, err := url.Parse(v)
-	if err != nil {
-		return ""
-	}
-
-	host := strings.TrimPrefix(u.Hostname(), "www.")
-	if host == "github.com" {
-		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-		return host + "/" + parts[0]
-	}
-
-	return host
 }
