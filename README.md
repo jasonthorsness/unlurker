@@ -8,17 +8,19 @@
 Unlurker helps you find the liveliest discussions on
 [news.ycombinator.com](https://news.ycombinator.com) so you can jump in before discussion dies.
 
-As seen on [hn.unlurker.com](https://hn.unlurker.com)!
+The site [hn.unlurker.com](https://hn.unlurker.com) is built on this package along with a thin
+[API](https://github.com/jasonthorsness/unlurker-web-backend) and
+[front-end](https://github.com/jasonthorsness/unlurker-web).
 
-This repo releases two tools and a client library for the
-[HN API](https://github.com/HackerNews/API).
+This repo contains a robust client library for the [HN API](https://github.com/HackerNews/API).
 
-| Tool | Purpose                       |
-| ---- | ----------------------------- |
-| unl  | Find active HN discussions    |
-| hn   | Retrieve data from the HN API |
+It also publishes two tools based on the library:
 
-## Installation
+- `unl` is a command-line version of [hn.unlurker.com](https://hn.unlurker.com).
+
+- `hn` enables retrieval of raw JSON data from the HN API
+
+## Installation of the Tools
 
 Install on Linux or Mac OS to `/usr/local/bin` (requires `curl`, `tar`, and `sudo`).
 
@@ -172,16 +174,17 @@ this, and something goes wrong (or you simply CTRL+C for some reason), you will 
 re-execute the same command and it will look at the contents of out.json to figure out where to
 correctly resume. You can resume with a different limit and cache settings.
 
-## Client Library
+## Using the Client Library
 
-You'll need to be using at least go 1.24.1.
+You'll need to be using at least go 1.24.2.
 
 ```bash
 go get github.com/jasonthorsness/unlurker/hn
 ```
 
-For a simple example of using the client library, refer to [cmd/unl/main.go](cmd/unl/main.go).
+For a simple examples of using the client library refer to [cmd/unl/main.go](cmd/unl/main.go) and
+[API](https://github.com/jasonthorsness/unlurker-web-backend).
 
 ## Building
 
-This project requires the go 1.24.1 SDK. Run 'make' to build both tools.
+This project requires the go 1.24.2 SDK. Run 'make' to build both tools.
