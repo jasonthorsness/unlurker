@@ -5,10 +5,14 @@ package unl
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jasonthorsness/unlurker/hn"
 )
@@ -85,16 +89,15 @@ func PrettyFormatTitle(item *hn.Item, withURL bool) string {
 	case item.Deleted:
 		text = "[deleted]"
 	case item.Title != "":
+		text = item.Title
 		if withURL && item.URL != "" {
-			text = item.Title + " (" + PrettyFormatURL(item.URL) + ")"
-		} else {
-			text = item.Title
+			text = text + " (" + PrettyFormatURL(item.URL) + ")"
 		}
 	default:
 		text = item.Text
 	}
 
-	text = PrettyStripTags(text)
+	text = PrettyCleanText(text)
 
 	return text
 }
@@ -115,31 +118,109 @@ func PrettyFormatURL(v string) string {
 }
 
 var (
-	linkRegex  = regexp.MustCompile(`(?i)<a\s+href="([^"]*)[^>]*">.*?</a>`)
-	stripRegex = regexp.MustCompile(`(?i)(?:\s*</?(?:p|b|i|pre|code)>\s*|\s+)`)
+	linkRegex = regexp.MustCompile(`(?i)<a\s+href="([^"]*)[^>]*">.*?</a>`)
+
+	//nolint:gochecknoglobals // excluded type
+	tagStripper = strings.NewReplacer(
+		"<p>", " ", "</p>", " ",
+		"<b>", " ", "</b>", " ",
+		"<i>", " ", "</i>", " ",
+		"<pre>", " ", "</pre>", " ",
+		"<code>", " ", "</code>", " ",
+	)
 )
 
-func PrettyStripTags(v string) string {
-	v = linkRegex.ReplaceAllString(v, "$1")
-	v = stripRegex.ReplaceAllString(v, " ")
+func PrettyCleanText(v string) string {
+	v = html.UnescapeString(v)
+	v = strings.Map(func(r rune) rune {
+		switch {
+		case r < ' ':
+			return ' '
+		case r < utf8.RuneSelf || (unicode.IsPrint(r) && !unicode.IsSpace(r)):
+			return r
+		default:
+			return ' '
+		}
+	}, v)
+
+	v = tagStripper.Replace(v)
+	v = linkRegex.ReplaceAllString(v, " $1 ")
+	v = collapseSpaces(v)
+
+	return v
+}
+
+func collapseSpaces(v string) string {
+	sb := strings.Builder{}
+	sb.Grow(len(v))
+
+	inWord := false
+
+	for _, r := range v {
+		switch {
+		case r == ' ':
+			if inWord {
+				sb.WriteByte(' ')
+			}
+
+			inWord = false
+		case r < utf8.RuneSelf:
+			sb.WriteByte(byte(r))
+
+			inWord = true
+		default:
+			sb.WriteRune(r)
+
+			inWord = true
+		}
+	}
+
+	v = sb.String()
+
 	v = strings.TrimSpace(v)
 
 	return v
+}
+
+var smallDurations []string //nolint:gochecknoglobals // string cache
+
+//nolint:gochecknoinits // string cache
+func init() {
+	const numSmallDurations = 3 * 60
+	smallDurations = make([]string, numSmallDurations)
+
+	for i := range numSmallDurations {
+		smallDurations[i] = prettyFormatMinutes(i)
+	}
 }
 
 // PrettyFormatDuration formats a positive duration for columnar display.
 // Output will align in columns if left-padded.
 func PrettyFormatDuration(d time.Duration) string {
 	totalMinutes := int(d.Minutes())
+	if totalMinutes < len(smallDurations) {
+		return smallDurations[totalMinutes]
+	}
 
+	return prettyFormatMinutes(totalMinutes)
+}
+
+func prettyFormatMinutes(totalMinutes int) string {
 	const minutesPerHour = 60
 
 	if totalMinutes < minutesPerHour {
-		return fmt.Sprintf("%dm", totalMinutes)
+		return strconv.Itoa(totalMinutes) + "m"
 	}
 
 	hours := totalMinutes / minutesPerHour
 	minutes := totalMinutes % minutesPerHour
 
-	return fmt.Sprintf("%dh %2dm", hours, minutes)
+	ms := strconv.Itoa(minutes)
+	padding := "h "
+
+	if len(ms) == 1 {
+		padding = "h  "
+	}
+
+	return strconv.Itoa(hours) + padding + ms + "m"
 }

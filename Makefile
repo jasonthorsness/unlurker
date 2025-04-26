@@ -32,6 +32,9 @@ lint:
 test:
 	go test -race ./... -tags $(TAGS)
 
+bench:
+	go test -run=^$$ -bench=. -benchmem ./... -tags $(TAGS)
+
 fmt:
 	go fmt ./... && gofumpt -w .
 

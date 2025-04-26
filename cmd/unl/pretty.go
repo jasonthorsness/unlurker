@@ -3,12 +3,10 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"html"
 	"io"
 	"math"
 	"strconv"
 	"time"
-	"unicode"
 
 	"github.com/jasonthorsness/unlurker/hn"
 	"github.com/jasonthorsness/unlurker/unl"
@@ -211,16 +209,12 @@ func writeToText(buf *bytes.Buffer, line *prettyLine, showColor bool, maxWidth i
 
 	var rn int
 
-	for _, r := range html.UnescapeString(line.text) {
+	for _, r := range line.text {
 		if remaining == 0 {
 			buf.Truncate(buf.Len() - rn)
 			buf.WriteRune('…')
 
 			break
-		}
-
-		if !unicode.IsPrint(r) {
-			r = ' '
 		}
 
 		rn, _ = buf.WriteRune(r)

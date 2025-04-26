@@ -119,7 +119,7 @@ func (co clientOptions) buildClient(ctx context.Context) (*Client, error) {
 	dco := co
 
 	if dco.clock == nil {
-		dco.clock = &defaultClock{}
+		dco.clock = core.NewClock()
 	}
 
 	if dco.fileCacheErrorHandler == nil {
@@ -269,12 +269,6 @@ func unmarshalItem(id int, reader io.ReadCloser) (_ *Item, err error) {
 var errContract = errors.New("contract error")
 
 var errNullBody = errors.New("HN API returned 'null' for the body (typical for very new Items)")
-
-type defaultClock struct{}
-
-func (c *defaultClock) Now() time.Time {
-	return time.Now()
-}
 
 const (
 	itemPathPrefix = "item/"

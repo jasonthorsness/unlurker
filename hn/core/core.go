@@ -72,3 +72,13 @@ func trySend[T any](ch chan<- T, v T) bool {
 		return false
 	}
 }
+
+func NewClock() Clock {
+	return &defaultClock{}
+}
+
+type defaultClock struct{}
+
+func (c *defaultClock) Now() time.Time {
+	return time.Now()
+}
