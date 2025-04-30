@@ -35,7 +35,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	sigCh := make(chan os.Signal, 1)
 
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGPIPE)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		sig := <-sigCh
@@ -384,6 +384,10 @@ func scanCmd() *cobra.Command {
 				to = max(1, from-remaining)
 			}
 
+			if from == to {
+				return nil
+			}
+
 			return runScan(ctx, client, writer, from, to, ascending)
 		},
 	}
@@ -432,10 +436,6 @@ func runScan(ctx context.Context, client *hn.Client, writer *bufio.Writer, from 
 	rawItemStream := client.Advanced().NewRawItemStream(ctx)
 	remaining := max(from-to, to-from)
 
-	// MaxInFlight queued, MaxInFlight in flight, MaxInFlight waiting for in-order processing
-	const scanWindowMultipliers = 3
-	scanWindowLength := rawItemStream.MaxInFlight() * scanWindowMultipliers
-
 	bar := progressbar.NewOptions(remaining,
 		progressbar.OptionSetDescription("Scanning"),
 		progressbar.OptionShowCount(),
@@ -444,25 +444,19 @@ func runScan(ctx context.Context, client *hn.Client, writer *bufio.Writer, from 
 		progressbar.OptionThrottle(1*time.Second),
 		progressbar.OptionSetWriter(os.Stderr),
 	)
+
 	defer func() {
-		_ = bar.Close()
+		if remaining == 0 {
+			_ = bar.Close()
+		} else {
+			_ = bar.Exit()
+		}
+
 		_, _ = os.Stderr.Write([]byte{'\n'})
 	}()
 
-	ids := make([]int, 0, scanWindowLength)
-
-	n := 0
-	for n < scanWindowLength {
-		ids = append(ids, from)
-
-		n++
-
-		if ascending {
-			from++
-		} else {
-			from--
-		}
-	}
+	var ids []int
+	from, ids = initializeScanIDs(rawItemStream.MaxInFlight(), from, ascending)
 
 	next := make([]int, 1)
 
@@ -500,4 +494,27 @@ func runScan(ctx context.Context, client *hn.Client, writer *bufio.Writer, from 
 
 		return true, nil, nil
 	})
+}
+
+func initializeScanIDs(maxInFlight int, from int, ascending bool) (int, []int) {
+	// MaxInFlight queued, MaxInFlight in flight, MaxInFlight waiting for in-order processing
+	const scanWindowMultipliers = 3
+	scanWindowLength := maxInFlight * scanWindowMultipliers
+
+	ids := make([]int, 0, scanWindowLength)
+
+	n := 0
+	for n < scanWindowLength {
+		ids = append(ids, from)
+
+		n++
+
+		if ascending {
+			from++
+		} else {
+			from--
+		}
+	}
+
+	return from, ids
 }

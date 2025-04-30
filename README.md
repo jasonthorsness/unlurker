@@ -174,6 +174,16 @@ this, and something goes wrong (or you simply CTRL+C for some reason), you will 
 re-execute the same command and it will look at the contents of out.json to figure out where to
 correctly resume. You can resume with a different limit and cache settings.
 
+If you use `scan --asc` you can keep appending new items to the file by re-running the command.
+Since recent items often change, you might want to trim the last few lines from the file in case
+they have changed. This `bash` script can accomplish the task:
+
+```bash
+input=input.json trim=1000 && \
+truncate -s -$(tail -n "$trim" "$input" | wc -c) "$input" && \
+hn scan --no-cache --asc -c- -o "$input"
+```
+
 ## Using the Client Library
 
 You'll need to be using at least go 1.24.2.

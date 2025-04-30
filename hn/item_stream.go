@@ -199,7 +199,7 @@ func searchDrain[TItem any](err error, resultCh <-chan ItemStreamValue[TItem]) e
 		return fmt.Errorf("search error: %w", err)
 	}
 
-	return err
+	return nil
 }
 
 func (s *ItemStream[TItem]) Advanced() (int, chan<- int, <-chan ItemStreamValue[TItem]) {
