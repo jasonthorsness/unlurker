@@ -38,40 +38,46 @@ type prettyWriter struct {
 	maxWidth    int
 }
 
-func (pw *prettyWriter) writeTree(item *hn.Item, allByParent map[int]hn.ItemSet) {
-	pw.writeTreeRecurse(item, allByParent, "")
-}
+func calculateIndent(items []*unl.ItemWithDepth) []string {
+	indent := make([]string, len(items))
+	lastDepth := 0
+	stack := make([]byte, 0, items[len(items)-1].Depth)
+	indent[0] = ""
 
-func (pw *prettyWriter) writeTreeRecurse(item *hn.Item, allByParent map[int]hn.ItemSet, indent string) {
-	isActive := time.Unix(item.Time, 0).After(pw.activeAfter) && !item.Dead && !item.Deleted
-	hasActiveChild := findActiveChild(item, allByParent, pw.activeAfter)
+	for i := len(items) - 1; i > 0; i-- {
+		item := items[i]
 
-	pw.writeItemIndent(item, isActive || hasActiveChild || item.Parent == nil, isActive, indent)
-
-	children := allByParent[item.ID]
-	cc := children.Slice()
-
-	for i, child := range cc {
-		var childIndent string
-
-		if i != len(cc)-1 {
-			childIndent = indent + "|"
+		if item.Depth < lastDepth {
+			stack = stack[:len(stack)-1]
 		} else {
-			childIndent = indent + " "
+			if len(stack) > 0 && i < len(items)-1 {
+				stack[lastDepth-1] = '|'
+			}
+
+			for range item.Depth - lastDepth {
+				stack = append(stack, ' ')
+			}
 		}
 
-		pw.writeTreeRecurse(child, allByParent, childIndent)
+		indent[i] = string(stack)
+		lastDepth = item.Depth
 	}
+
+	return indent
 }
 
-func findActiveChild(item *hn.Item, allByParent map[int]hn.ItemSet, activeAfter time.Time) bool {
-	for _, child := range allByParent[item.ID] {
-		if time.Unix(child.Time, 0).After(activeAfter) && !child.Dead && !child.Deleted {
-			return true
-		}
-	}
+func (pw *prettyWriter) writeTree(root *hn.Item, allByParent map[int]hn.ItemSet) {
+	flat := unl.FlattenTree(root, allByParent)
+	activeMap := unl.BuildActiveMap(flat, pw.activeAfter)
+	indent := calculateIndent(flat)
 
-	return false
+	for i, item := range flat {
+		ae := activeMap[item.ID]
+		showText := item.Parent == nil || ae != 0
+		active := (ae & unl.ActiveMapSelf) > 0
+
+		pw.writeItemIndent(item.Item, showText, active, indent[i])
+	}
 }
 
 func (pw *prettyWriter) writeItemIndent(item *hn.Item, showText bool, isActive bool, indent string) {

@@ -53,21 +53,20 @@ func (items ItemSet) IDs() []int {
 	return ids
 }
 
-func (items ItemSet) Slice() []*Item {
-	ids := make([]int, 0, len(items))
-
-	for id := range items {
-		ids = append(ids, id)
-	}
-
-	sort.Slice(ids, func(i, j int) bool {
-		return ids[i] > ids[j]
-	})
-
+func (items ItemSet) OrderByTimeDesc() []*Item {
 	result := make([]*Item, 0, len(items))
-	for _, id := range ids {
-		result = append(result, items[id])
+	for _, item := range items {
+		result = append(result, item)
 	}
+
+	sort.Slice(result, func(i, j int) bool {
+		a, b := result[i], result[j]
+		if a.Time == b.Time {
+			return a.ID > b.ID
+		}
+
+		return a.Time > b.Time
+	})
 
 	return result
 }

@@ -42,7 +42,7 @@ func GetActive(
 
 	activeRoots := getActiveRoots(allByRoot, agedAfter, activeAfter, minBy)
 
-	items := activeRoots.Slice()
+	items := activeRoots.OrderByTimeDesc()
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
 	}
@@ -78,6 +78,65 @@ func getActiveRoots(
 	}
 
 	return activeRoots
+}
+
+type ItemWithDepth struct {
+	*hn.Item
+	NormalizedTime int64
+	Depth          int
+}
+
+type treeTraverser struct {
+	items []*ItemWithDepth
+}
+
+func FlattenTree(item *hn.Item, allByParent map[int]hn.ItemSet) []*ItemWithDepth {
+	tt := &treeTraverser{items: make([]*ItemWithDepth, 0, 1+len(allByParent[item.ID]))}
+
+	tt.traverseTreeRecurse(item, allByParent, 0)
+
+	return tt.items
+}
+
+func (tt *treeTraverser) traverseTreeRecurse(item *hn.Item, allByParent map[int]hn.ItemSet, depth int) int64 {
+	self := &ItemWithDepth{item, item.Time, depth}
+
+	tt.items = append(tt.items, self)
+
+	children := allByParent[item.ID]
+	cc := children.OrderByTimeDesc()
+
+	for _, child := range cc {
+		self.NormalizedTime = min(self.NormalizedTime, tt.traverseTreeRecurse(child, allByParent, depth+1))
+	}
+
+	return self.NormalizedTime
+}
+
+type ActiveMapEntry uint8
+
+const (
+	ActiveMapInactive = iota
+	ActiveMapSelf     = 1
+	ActiveMapChild    = 2
+)
+
+func BuildActiveMap(flat []*ItemWithDepth, activeAfter time.Time) map[int]ActiveMapEntry {
+	activeMap := make(map[int]ActiveMapEntry, len(flat))
+
+	for _, item := range flat {
+		active := time.Unix(item.Time, 0).After(activeAfter) && !item.Dead && !item.Deleted
+		if !active {
+			continue
+		}
+
+		activeMap[item.ID] |= ActiveMapSelf
+		if item.Parent != nil {
+			activeMap[*item.Parent] |= ActiveMapChild
+		}
+	}
+
+	return activeMap
 }
 
 func PrettyFormatTitle(item *hn.Item, withURL bool) string {
@@ -197,6 +256,10 @@ func init() {
 // PrettyFormatDuration formats a positive duration for columnar display.
 // Output will align in columns if left-padded.
 func PrettyFormatDuration(d time.Duration) string {
+	if d <= 0 {
+		return smallDurations[0]
+	}
+
 	totalMinutes := int(d.Minutes())
 	if totalMinutes < len(smallDurations) {
 		return smallDurations[totalMinutes]
