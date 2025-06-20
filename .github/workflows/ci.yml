@@ -51,7 +51,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - run: |
-          curl -sSL https://musl.cc/aarch64-linux-musl-cross.tgz \
+          curl -sSL https://github.com/jasonthorsness/unlurker/releases/download/toolchain-musl-cache-20250619/aarch64-linux-musl-cross.tgz \
             | sudo tar xz -C /usr/local
 
       - run: echo "/usr/local/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
