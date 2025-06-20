@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -72,52 +73,7 @@ func buildCommand(
 		Use:   "unl",
 		Short: "unl finds active discussions on news.ycombinator.com",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-
-			if len(args) != 0 {
-				return fmt.Errorf("%w: unexpected positional arguments: %v", errInvalidArgs, args)
-			}
-
-			if cmd.Flags().Changed("no-cache") && cmd.Flags().Changed("cache-path") {
-				return fmt.Errorf("%w: cannot provide both --no-cache and --cache-path", errInvalidArgs)
-			}
-
-			if noCache {
-				cachePath = ""
-			}
-
-			client, err := hn.NewClient(ctx, hn.WithFileCachePath(cachePath), hn.WithGetter(getter), hn.WithClock(clock))
-			if err != nil {
-				return fmt.Errorf("failed to create client: %w", err)
-			}
-			defer func(client *hn.Client) {
-				err = client.Close()
-				if err != nil {
-					log.Fatalf("failed to close client: %v", err)
-				}
-			}(client)
-
-			var now time.Time
-			if clock != nil {
-				now = clock.Now()
-			} else {
-				now = time.Now()
-			}
-
-			activeAfter := now.Add(-window)
-			agedAfter := now.Add(-maxAge)
-
-			items, allByParent, err := unl.GetActive(ctx, client, activeAfter, agedAfter, minBy, limit)
-			if err != nil {
-				return err
-			}
-
-			err = writeActiveToStdout(items, allByParent, now, activeAfter, noColor, maxWidth)
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return runCommand(cmd, args, getter, clock, noCache, cachePath, maxWidth, window, maxAge, minBy, limit, noColor)
 		},
 		Long:    "unl finds active discussions on news.ycombinator.com",
 		Example: "  unl --max-age 8h --window 30m --min-by 3 --limit 3",
@@ -140,15 +96,116 @@ func buildCommand(
 	return cmd
 }
 
+func runCommand(
+	cmd *cobra.Command,
+	args []string,
+	getter core.Getter[string, io.ReadCloser],
+	clock core.Clock,
+	noCache bool,
+	cachePath string,
+	maxWidth int,
+	window time.Duration,
+	maxAge time.Duration,
+	minBy int,
+	limit int,
+	noColor bool,
+) error {
+	ctx := cmd.Context()
+
+	if err := validateArgs(cmd, args, noCache); err != nil {
+		return err
+	}
+
+	if noCache {
+		cachePath = ""
+	}
+
+	client, err := createClient(ctx, cachePath, getter, clock)
+	if err != nil {
+		return err
+	}
+	defer closeClient(client)
+
+	now := getCurrentTime(clock)
+	activeAfter := now.Add(-window)
+	agedAfter := now.Add(-maxAge)
+
+	frontPageTimes, err := unl.FetchFrontPageTimes(ctx, now)
+	if err != nil {
+		_, err = fmt.Fprintf(os.Stderr, "\nWarning: Failed to adjust times for second-chance articles: %v\n", err)
+		if err != nil {
+			return fmt.Errorf("failed to write warning: %w", err)
+		}
+	}
+
+	items, allByParent, err := unl.GetActive(ctx, client, frontPageTimes, activeAfter, agedAfter, minBy, limit)
+	if err != nil {
+		return err
+	}
+
+	err = writeActiveToStdout(items, allByParent, frontPageTimes, now, activeAfter, noColor, maxWidth)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateArgs(cmd *cobra.Command, args []string, _ bool) error {
+	if len(args) != 0 {
+		return fmt.Errorf("%w: unexpected positional arguments: %v", errInvalidArgs, args)
+	}
+
+	if cmd.Flags().Changed("no-cache") && cmd.Flags().Changed("cache-path") {
+		return fmt.Errorf("%w: cannot provide both --no-cache and --cache-path", errInvalidArgs)
+	}
+
+	return nil
+}
+
+func createClient(
+	ctx context.Context, cachePath string, getter core.Getter[string, io.ReadCloser], clock core.Clock,
+) (*hn.Client, error) {
+	client, err := hn.NewClient(ctx, hn.WithFileCachePath(cachePath), hn.WithGetter(getter), hn.WithClock(clock))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: %w", err)
+	}
+
+	return client, nil
+}
+
+func closeClient(client *hn.Client) {
+	err := client.Close()
+	if err != nil {
+		log.Fatalf("failed to close client: %v", err)
+	}
+}
+
+func getCurrentTime(clock core.Clock) time.Time {
+	if clock != nil {
+		return clock.Now()
+	}
+
+	return time.Now()
+}
+
 func writeActiveToStdout(
 	items []*hn.Item,
 	allByParent map[int]hn.ItemSet,
+	adjustedTimes map[int]int64,
 	now time.Time,
 	activeAfter time.Time,
 	noColor bool,
 	maxWidth int,
 ) error {
-	pw := prettyWriter{now, activeAfter, nil, !noColor, maxWidth}
+	pw := prettyWriter{
+		now:           now,
+		activeAfter:   activeAfter,
+		adjustedTimes: adjustedTimes,
+		lines:         nil,
+		maxWidth:      maxWidth,
+		showColor:     !noColor,
+	}
 
 	for _, item := range items {
 		pw.writeTree(item, allByParent)

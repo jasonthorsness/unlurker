@@ -1,6 +1,6 @@
 module github.com/jasonthorsness/unlurker
 
-go 1.24.2
+go 1.24.3
 
 require (
 	github.com/google/go-cmp v0.7.0
@@ -8,6 +8,7 @@ require (
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/cobra v1.9.1
 	go.uber.org/goleak v1.3.0
+	golang.org/x/sync v0.11.0
 	golang.org/x/term v0.31.0
 )
 

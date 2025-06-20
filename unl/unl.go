@@ -4,22 +4,29 @@ package unl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
+	"io"
+	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/jasonthorsness/unlurker/hn"
+	"golang.org/x/sync/singleflight"
 )
 
 func GetActive(
 	ctx context.Context,
 	client *hn.Client,
+	adjustedTimes map[int]int64,
 	activeAfter time.Time,
 	agedAfter time.Time,
 	minBy int,
@@ -40,9 +47,12 @@ func GetActive(
 		return nil, nil, fmt.Errorf("failed to get group by root: %w", err)
 	}
 
-	activeRoots := getActiveRoots(allByRoot, agedAfter, activeAfter, minBy)
+	activeRoots := getActiveRoots(allByRoot, adjustedTimes, agedAfter, activeAfter, minBy)
 
 	items := activeRoots.OrderByTimeDesc()
+
+	items = sortItems(items, adjustedTimes)
+
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
 	}
@@ -55,8 +65,45 @@ func GetActive(
 	return items, allByParent, nil
 }
 
+func sortItems(items []*hn.Item, adjustedTimes map[int]int64) []*hn.Item {
+	type itemWithTime struct {
+		item *hn.Item
+		time int64
+	}
+
+	itemsWithTimes := make([]itemWithTime, len(items))
+
+	for i, item := range items {
+		effectiveTime := item.Time
+
+		adjusted, ok := adjustedTimes[item.ID]
+		if ok {
+			effectiveTime = adjusted
+		}
+
+		itemsWithTimes[i] = itemWithTime{item, effectiveTime}
+	}
+
+	sort.Slice(itemsWithTimes, func(i, j int) bool {
+		a, b := itemsWithTimes[i], itemsWithTimes[j]
+		if a.time == b.time {
+			return a.item.ID > b.item.ID
+		}
+
+		return a.time > b.time
+	})
+
+	sortedItems := make([]*hn.Item, len(items))
+	for i, iwt := range itemsWithTimes {
+		sortedItems[i] = iwt.item
+	}
+
+	return sortedItems
+}
+
 func getActiveRoots(
 	allByRoot map[*hn.Item]hn.ItemSet,
+	adjustedTimes map[int]int64,
 	agedAfter time.Time,
 	activeAfter time.Time,
 	minBy int,
@@ -64,7 +111,14 @@ func getActiveRoots(
 	activeRoots := make(hn.ItemSet, len(allByRoot))
 
 	for root, tree := range allByRoot {
-		if root.Dead || root.Deleted || !time.Unix(root.Time, 0).After(agedAfter) {
+		effectiveRootTime := root.Time
+
+		adjusted, ok := adjustedTimes[root.ID]
+		if ok {
+			effectiveRootTime = adjusted
+		}
+
+		if root.Dead || root.Deleted || !time.Unix(effectiveRootTime, 0).After(agedAfter) {
 			continue
 		}
 
@@ -286,4 +340,137 @@ func prettyFormatMinutes(totalMinutes int) string {
 	}
 
 	return strconv.Itoa(hours) + padding + ms + "m"
+}
+
+// Second-chance article functionality
+
+var (
+	fetchCache            atomic.Value       //nolint:gochecknoglobals // cache for front page times
+	fetchGroup            singleflight.Group //nolint:gochecknoglobals // deduplication for front page requests
+	frontPageAgeExtractor = regexp.MustCompile(
+		`<span class="age" title="[^"]+\s+(\d+)"><a href="item\?id=(\d+)">([^<]+) ago</a></span>`)
+)
+
+type fetchCacheEntry struct {
+	data map[int]int64
+	ts   time.Time
+}
+
+var (
+	errStatusNotOK                = errors.New("status not ok")
+	errUnexpectedSingleflightType = errors.New("unexpected type from singleflight")
+)
+
+// FetchFrontPageTimes retrieves the current apparent times of articles on HN's front page
+// for detecting second-chance articles (articles pulled from the second-chance pool).
+func FetchFrontPageTimes(ctx context.Context, now time.Time) (map[int]int64, error) {
+	entry, ok := fetchCache.Load().(*fetchCacheEntry)
+	if ok {
+		if time.Since(entry.ts) < time.Minute {
+			return entry.data, nil
+		}
+	}
+
+	v, err, _ := fetchGroup.Do(
+		"frontpage",
+		func() (interface{}, error) { return fetchFrontPageTimesInner(ctx, now) })
+	if err != nil {
+		return nil, fmt.Errorf("singleflight frontpage failed: %w", err)
+	}
+
+	times, ok := v.(map[int]int64)
+	if !ok {
+		return nil, fmt.Errorf("%w: %T", errUnexpectedSingleflightType, v)
+	}
+
+	return times, nil
+}
+
+func fetchFrontPageTimesInner(ctx context.Context, now time.Time) (interface{}, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://news.ycombinator.com", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	res, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+
+	defer func() { _ = res.Body.Close() }()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: %s", errStatusNotOK, res.Status)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read body: %w", err)
+	}
+
+	matches := frontPageAgeExtractor.FindAllSubmatch(body, -1)
+	m := make(map[int]int64, len(matches))
+
+	for _, match := range matches {
+		ts, err := strconv.ParseInt(string(match[1]), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse time: %w", err)
+		}
+
+		t := time.Unix(ts, 0)
+
+		id, err := strconv.Atoi(string(match[2]))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse id: %w", err)
+		}
+
+		age, gap, err := parseAge(string(match[3]))
+		if err != nil {
+			return nil, err
+		}
+
+		diff := now.Sub(t) - age
+		if diff > gap {
+			m[id] = now.Add(-age).Unix()
+		} else {
+			m[id] = ts
+		}
+	}
+
+	fetchCache.Store(&fetchCacheEntry{
+		data: m,
+		ts:   time.Now(),
+	})
+
+	return m, nil
+}
+
+var errUnexpectedAgeFormat = errors.New("unexpected age format")
+
+var relativeAgeRegex = regexp.MustCompile(
+	`^\s*(\d+)\s+(hour|hours|minute|minutes|day|days)\s*$`)
+
+func parseAge(s string) (time.Duration, time.Duration, error) {
+	m := relativeAgeRegex.FindStringSubmatch(s)
+	if m == nil {
+		return 0, 0, fmt.Errorf("%w: %q", errUnexpectedAgeFormat, s)
+	}
+
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse age: %w", err)
+	}
+
+	const oneDayDuration = 24 * time.Hour
+
+	switch m[2] {
+	case "minute", "minutes":
+		return time.Duration(n) * time.Minute, 1 * time.Hour, nil
+	case "hour", "hours":
+		return time.Duration(n) * time.Hour, 2 * time.Hour, nil
+	case "day", "days":
+		return time.Duration(n) * oneDayDuration, oneDayDuration, nil
+	default:
+		return 0, 0, fmt.Errorf("%w: %q", errUnexpectedAgeFormat, m[2])
+	}
 }

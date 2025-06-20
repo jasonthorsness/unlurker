@@ -101,7 +101,11 @@ func (c *Client) GetItems(ctx context.Context, ids []int) (ItemSet, error) {
 // GetActive returns the active items, defined as items created after the provided time, along with their ancestors.
 // It scans roughly from the most recent item, avoiding checking ids beyond one it knows was too old.
 // This seems overly specialized, but it's the whole reason this package exists, so it gets to remain :P.
-func (c *Client) GetActive(ctx context.Context, maxID int, activeAfter time.Time) (ItemSet, error) {
+func (c *Client) GetActive(
+	ctx context.Context,
+	maxID int,
+	activeAfter time.Time,
+) (ItemSet, error) {
 	itemStream := c.Advanced().NewItemStream(ctx)
 	ids := make([]int, 0, itemStream.MaxInFlight())
 

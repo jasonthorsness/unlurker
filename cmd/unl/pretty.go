@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jasonthorsness/unlurker/hn"
@@ -21,21 +22,23 @@ const (
 )
 
 type prettyLine struct {
-	link   string
-	by     string
-	age    string
-	indent string
-	text   string
-	root   bool
-	active bool
+	link         string
+	by           string
+	age          string
+	indent       string
+	text         string
+	root         bool
+	active       bool
+	secondChance bool
 }
 
 type prettyWriter struct {
-	now         time.Time
-	activeAfter time.Time
-	lines       []prettyLine
-	showColor   bool
-	maxWidth    int
+	now           time.Time
+	activeAfter   time.Time
+	adjustedTimes map[int]int64
+	lines         []prettyLine
+	maxWidth      int
+	showColor     bool
 }
 
 func calculateIndent(items []*unl.ItemWithDepth) []string {
@@ -76,21 +79,33 @@ func (pw *prettyWriter) writeTree(root *hn.Item, allByParent map[int]hn.ItemSet)
 		showText := item.Parent == nil || ae != 0
 		active := (ae & unl.ActiveMapSelf) > 0
 
-		pw.writeItemIndent(item.Item, showText, active, indent[i])
+		v, ok := pw.adjustedTimes[item.ID]
+		isSecondChance := ok && item.Time != v
+
+		pw.writeItemIndent(item.Item, showText, active, isSecondChance, indent[i])
 	}
 }
 
-func (pw *prettyWriter) writeItemIndent(item *hn.Item, showText bool, isActive bool, indent string) {
+func (pw *prettyWriter) writeItemIndent(
+	item *hn.Item, showText bool, isActive bool, isSecondChance bool, indent string,
+) {
 	link := "https://news.ycombinator.com/item?id=" + strconv.Itoa(item.ID)
 	by := item.By
-	age := unl.PrettyFormatDuration(pw.now.Sub(time.Unix(item.Time, 0)))
+
+	// Use adjusted time if available, otherwise use original time
+	effectiveTime := item.Time
+	if adjustedTime, ok := pw.adjustedTimes[item.ID]; ok {
+		effectiveTime = adjustedTime
+	}
+
+	age := unl.PrettyFormatDuration(pw.now.Sub(time.Unix(effectiveTime, 0)))
 	text := ""
 
 	if showText {
 		text = unl.PrettyFormatTitle(item, true)
 	}
 
-	pw.lines = append(pw.lines, prettyLine{link, by, age, indent, text, item.Parent == nil, isActive})
+	pw.lines = append(pw.lines, prettyLine{link, by, age, indent, text, item.Parent == nil, isActive, isSecondChance})
 }
 
 func (pw *prettyWriter) WriteTo(w io.Writer) (int64, error) {
@@ -110,6 +125,18 @@ func (pw *prettyWriter) WriteTo(w io.Writer) (int64, error) {
 
 		if line.root && i != 0 {
 			buf.WriteString("\n")
+		}
+
+		if line.secondChance {
+			if pw.showColor {
+				buf.WriteString(colorDarkGray)
+			}
+
+			const spaceBetweenFields = 3
+			indentLength := len(line.link) + maxByLength + maxAgeLength + spaceBetweenFields
+			indent := strings.Repeat(" ", indentLength)
+			buf.WriteString(indent)
+			buf.WriteString("↙ time adjusted for second-chance\n")
 		}
 
 		if pw.showColor {
