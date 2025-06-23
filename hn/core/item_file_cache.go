@@ -77,18 +77,23 @@ func NewItemFileCache(
 	return c, nil
 }
 
-func (c *ItemFileCache) Get(ctx context.Context, ids []int, do func(id int, reader io.ReadCloser)) ([]int, error) {
+func (c *ItemFileCache) Get(ctx context.Context, ids []int, do func(id int, reader io.ReadCloser)) []int {
 	did := make([]bool, len(ids))
 	err := c.get(ctx, ids, did, do)
+
 	remaining := make([]int, 0, len(ids))
 
 	for i, v := range did {
 		if !v {
-			remaining = append(remaining, ids[i])
+			if err != nil {
+				do(ids[i], WrapErrorInReadCloser(err))
+			} else {
+				remaining = append(remaining, ids[i])
+			}
 		}
 	}
 
-	return remaining, err
+	return remaining
 }
 
 func (c *ItemFileCache) get(ctx context.Context, ids []int, did []bool, do func(id int, reader io.ReadCloser)) error {

@@ -12,7 +12,7 @@ var ErrGetterPanic = errors.New("getter panic")
 func NewBulkWorkerPoolGetter[TKey any, TValue any](
 	workerPool *WorkerPool,
 	getter Getter[TKey, TValue],
-	wrapError func(error) (TValue, error),
+	wrapError func(error) TValue,
 ) *BulkWorkerPoolGetter[TKey, TValue] {
 	return &BulkWorkerPoolGetter[TKey, TValue]{
 		workerPool: workerPool,
@@ -24,23 +24,18 @@ func NewBulkWorkerPoolGetter[TKey any, TValue any](
 type BulkWorkerPoolGetter[TKey any, TValue any] struct {
 	workerPool *WorkerPool
 	getter     Getter[TKey, TValue]
-	wrapError  func(error) (TValue, error)
+	wrapError  func(error) TValue
 }
 
 func (g *BulkWorkerPoolGetter[TKey, TValue]) Get(
 	ctx context.Context,
-	errCh chan<- error,
 	keys []TKey,
 	do func(TKey, TValue),
 ) []TKey {
-	return DoWork[TKey](ctx, g.workerPool, errCh, keys, func(ctx context.Context, key TKey) {
+	return DoWork[TKey](ctx, g.workerPool, keys, func(ctx context.Context, key TKey) {
 		result, err := safeRunGetter(ctx, g.getter, key)
 		if err != nil {
-			result, err = g.wrapError(err)
-			if err != nil {
-				errCh <- err
-				return
-			}
+			result = g.wrapError(err)
 		}
 
 		do(key, result)

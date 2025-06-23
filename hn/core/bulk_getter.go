@@ -11,9 +11,9 @@ type BulkGetter[TKey any, TValue any] interface {
 	// 2. Keys that cannot be processed because the underlying system is full are returned.
 	// 3. The do callback will be called exactly once for each key that is queued and not returned.
 	// 4. If duplicates are passed the do function is called for each (ex: [1,1,1] -> 3 calls).
-	// 5. If the do function panics, an error will be sent with a non-blocking send on errCh.
+	// 5. The do callback should not panic, but even if it does the #3 invariant must hold.
 	// 6. Generally the do function should be written to not block as the underlying system might have a fixed capacity.
-	Get(ctx context.Context, errCh chan<- error, keys []TKey, do func(key TKey, value TValue)) []TKey
+	Get(ctx context.Context, keys []TKey, do func(key TKey, value TValue)) []TKey
 }
 
 func NewBulkItemGetter(workerPool *WorkerPool, getter Getter[string, io.ReadCloser]) BulkGetter[int, io.ReadCloser] {
@@ -36,7 +36,6 @@ func NewBulkMapCacheGetter[TKey comparable, TValue any](
 
 func (g *BulkMapCacheGetter[TKey, TValue]) Get(
 	ctx context.Context,
-	errCh chan<- error,
 	keys []TKey,
 	do func(key TKey, value TValue),
 ) []TKey {
@@ -49,7 +48,7 @@ func (g *BulkMapCacheGetter[TKey, TValue]) Get(
 		return remaining
 	}
 
-	return g.inner.Get(ctx, errCh, remaining, func(key TKey, value TValue) {
+	return g.inner.Get(ctx, remaining, func(key TKey, value TValue) {
 		if g.shouldCache(key, value) {
 			g.cache.Put(key, value)
 		}
@@ -72,9 +71,8 @@ func NewBulkTransformGetter[TKey any, TValueInner any, TValueOuter any](
 
 func (g *BulkTransformGetter[TKey, TValueInner, TValueOuter]) Get(
 	ctx context.Context,
-	errCh chan<- error,
 	keys []TKey,
 	do func(TKey, TValueOuter),
 ) []TKey {
-	return g.inner.Get(ctx, errCh, keys, func(key TKey, value TValueInner) { do(key, g.transform(key, value)) })
+	return g.inner.Get(ctx, keys, func(key TKey, value TValueInner) { do(key, g.transform(key, value)) })
 }

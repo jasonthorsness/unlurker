@@ -14,7 +14,7 @@ func NewBulkItemFileCacheGetter(
 	inner BulkGetter[int, io.ReadCloser],
 	cache *ItemFileCache,
 	putBatchSize int,
-	putChannelFull func() error,
+	putChannelFull func(),
 	putError func(error),
 ) *BulkItemFileCacheGetter {
 	result := &BulkItemFileCacheGetter{
@@ -42,7 +42,7 @@ type BulkItemFileCacheGetter struct {
 	pool           *sync.Pool
 	wg             *sync.WaitGroup
 	cache          *ItemFileCache
-	putChannelFull func() error
+	putChannelFull func()
 	putBatchSize   int
 }
 
@@ -59,21 +59,15 @@ func (g *BulkItemFileCacheGetter) Close() error {
 // Get reads the inner reads into two buffers, one it sends to the cache, and one it passes onward.
 func (g *BulkItemFileCacheGetter) Get(
 	ctx context.Context,
-	errCh chan<- error,
 	keys []int,
 	do func(int, io.ReadCloser),
 ) []int {
-	remaining, err := g.cache.Get(ctx, keys, do)
-	if err != nil {
-		// Send error and continue so that do() will be called for the remaining items
-		errCh <- err
-	}
-
+	remaining := g.cache.Get(ctx, keys, do)
 	if len(remaining) == 0 {
 		return remaining
 	}
 
-	return g.inner.Get(ctx, errCh, remaining, func(key int, reader io.ReadCloser) {
+	return g.inner.Get(ctx, remaining, func(key int, reader io.ReadCloser) {
 		defer func() { _ = reader.Close() }()
 
 		a := g.pool.Get().(*bytes.Buffer) //nolint:forcetypeassert // typed pool
@@ -92,10 +86,7 @@ func (g *BulkItemFileCacheGetter) Get(
 		if !trySend[*bytes.Buffer](g.ch, a) {
 			g.pool.Put(a)
 
-			err = g.putChannelFull()
-			if err != nil {
-				_ = trySend(errCh, err)
-			}
+			g.putChannelFull()
 		}
 
 		do(key, &readCloserWithPooledBuffer{g.pool, b})

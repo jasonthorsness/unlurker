@@ -246,7 +246,7 @@ type ResourceGetter interface {
 }
 
 type BulkStreamGetter[TItem any] interface {
-	Get(ctx context.Context, errCh chan<- error, ids []int, do func(id int, value ItemStreamValue[TItem])) []int
+	Get(ctx context.Context, ids []int, do func(id int, value ItemStreamValue[TItem])) []int
 }
 
 func (c AdvancedClient) BulkItemGetter() BulkStreamGetter[*Item] {

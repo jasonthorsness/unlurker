@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -30,7 +31,6 @@ func NewBulkSingleFlightGetter[TKey comparable, TValue any](
 
 func (g *BulkSingleFlightGetter[TKey, TValue]) Get(
 	ctx context.Context,
-	errCh chan<- error,
 	keys []TKey,
 	do func(key TKey, value TValue),
 ) []TKey {
@@ -55,21 +55,25 @@ func (g *BulkSingleFlightGetter[TKey, TValue]) Get(
 		return remaining
 	}
 
-	return g.inner.Get(ctx, errCh, remaining, func(key TKey, value TValue) {
+	return g.inner.Get(ctx, remaining, func(key TKey, value TValue) {
 		if g.cache != nil && g.shouldCache(key, value) {
 			g.cache.Put(key, value)
 		}
 
 		dos := g.removePending(key)
 
+		var err error
 		for _, do := range dos {
-			err := g.safeRunDo(do, key, value)
-			if err != nil {
-				_ = trySend(errCh, err)
-			}
+			err = errors.Join(g.safeRunDo(do, key, value))
+		}
+
+		if err != nil {
+			panic(err)
 		}
 	})
 }
+
+var ErrDoPanic = errors.New("do panic")
 
 func (g *BulkSingleFlightGetter[TKey, TValue]) safeRunDo(
 	do func(key TKey, value TValue),

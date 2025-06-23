@@ -183,7 +183,7 @@ func (co clientOptions) buildClientInternal(ctx context.Context) (_ *Client, err
 		}
 
 		errorHandler := co.fileCacheErrorHandler
-		putChannelFull := func() error { errorHandler(ErrFileCachePutChannelFull); return nil }
+		putChannelFull := func() { errorHandler(ErrFileCachePutChannelFull) }
 		putError := func(err error) { errorHandler(err) }
 		fcg := core.NewBulkItemFileCacheGetter(ctx, inner, cache, fileCachePutBatchSize, putChannelFull, putError)
 		inner = fcg

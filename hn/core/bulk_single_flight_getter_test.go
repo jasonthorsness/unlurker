@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,21 +10,19 @@ import (
 
 type BulkGetterFunc[TKey comparable, TValue any] func(
 	ctx context.Context,
-	errCh chan<- error,
 	keys []TKey,
 	do func(TKey, TValue),
 ) []TKey
 
 func (f BulkGetterFunc[TKey, TValue]) Get(
 	ctx context.Context,
-	errCh chan<- error,
 	keys []TKey,
 	do func(TKey, TValue),
 ) []TKey {
-	return f(ctx, errCh, keys, do)
+	return f(ctx, keys, do)
 }
 
-func TestSingleFlightDedupWithPanicMiddle(t *testing.T) {
+func TestSingleFlightDedup(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -38,7 +35,6 @@ func TestSingleFlightDedupWithPanicMiddle(t *testing.T) {
 
 	inner := BulkGetterFunc[int, int](func(
 		_ context.Context,
-		_ chan<- error,
 		keys []int,
 		do func(int, int),
 	) []int {
@@ -69,19 +65,15 @@ func TestSingleFlightDedupWithPanicMiddle(t *testing.T) {
 		atomic.AddInt32(&do1Count, 1)
 		wg.Done()
 	}
-	panicCb := func(_ int, _ int) {
-		panic("boom")
-	}
 	cb3 := func(_ int, _ int) {
 		atomic.AddInt32(&do3Count, 1)
 		wg.Done()
 	}
 
-	go g.Get(ctx, errCh, []int{42}, cb1)
+	go g.Get(ctx, []int{42}, cb1)
 	<-started
 
-	g.Get(ctx, errCh, []int{42}, panicCb)
-	g.Get(ctx, errCh, []int{42}, cb3)
+	g.Get(ctx, []int{42}, cb3)
 
 	proceed <- struct{}{}
 
@@ -106,15 +98,6 @@ func TestSingleFlightDedupWithPanicMiddle(t *testing.T) {
 
 	if got := atomic.LoadInt32(&do3Count); got != 1 {
 		t.Errorf("expected do3Count=1, got %d", got)
-	}
-
-	select {
-	case err := <-errCh:
-		if !errors.Is(err, ErrDoPanic) {
-			t.Errorf("expected ErrDoPanic, got %v", err)
-		}
-	default:
-		t.Fatal("expected one error on errCh but got none")
 	}
 
 	select {

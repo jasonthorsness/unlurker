@@ -186,7 +186,7 @@ hn scan --no-cache --asc -c- -o "$input"
 
 ## Using the Client Library
 
-You'll need to be using at least go 1.24.2.
+You'll need to be using at least go 1.24.3.
 
 ```bash
 go get github.com/jasonthorsness/unlurker/hn
@@ -197,4 +197,4 @@ For a simple examples of using the client library refer to [cmd/unl/main.go](cmd
 
 ## Building
 
-This project requires the go 1.24.2 SDK. Run 'make' to build both tools.
+This project requires the go 1.24.3 SDK. Run 'make' to build both tools.

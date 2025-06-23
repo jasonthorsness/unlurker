@@ -52,7 +52,7 @@ func newItemStream[TItem any](
 				wg.Add(1)
 			}
 
-			r := bulkItemGetter.Get(ctx, errCh, ids, func(_ int, value ItemStreamValue[TItem]) {
+			r := bulkItemGetter.Get(ctx, ids, func(_ int, value ItemStreamValue[TItem]) {
 				defer wg.Done()
 
 				if !trySend(resultCh, value) {

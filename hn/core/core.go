@@ -29,8 +29,8 @@ func (r *readCloserWithError) Close() error {
 	return nil
 }
 
-func WrapErrorInReadCloser(err error) (io.ReadCloser, error) {
-	return &readCloserWithError{err}, nil
+func WrapErrorInReadCloser(err error) io.ReadCloser {
+	return &readCloserWithError{err}
 }
 
 type readCloserWithPooledBuffer struct {

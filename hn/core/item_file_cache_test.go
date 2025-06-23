@@ -93,10 +93,7 @@ func TestFileCache_PutAndGet(t *testing.T) {
 
 	did := make([]int, 0, 1)
 
-	remaining, err := fc.Get(t.Context(), []int{1, 4}, makeLogAndCheckCallback(t, &did))
-	if err != nil {
-		t.Fatalf("get failed: %v", err)
-	}
+	remaining := fc.Get(t.Context(), []int{1, 4}, makeLogAndCheckCallback(t, &did))
 
 	sort.Ints(did)
 
@@ -114,10 +111,7 @@ func TestFileCache_PutAndGet(t *testing.T) {
 
 	did = did[:0]
 
-	remaining, err = fc.Get(t.Context(), []int{1, 2, 2, 3, 1}, makeLogAndCheckCallback(t, &did))
-	if err != nil {
-		t.Fatalf("get failed: %v", err)
-	}
+	remaining = fc.Get(t.Context(), []int{1, 2, 2, 3, 1}, makeLogAndCheckCallback(t, &did))
 
 	if len(remaining) != 0 {
 		t.Fatalf("expected 0 remaining, got %d", len(remaining))
@@ -171,10 +165,7 @@ func TestFileCache_Stale(t *testing.T) {
 
 	did := make([]int, 0, 3)
 
-	_, err = fc.Get(t.Context(), []int{1, 2, 3}, makeLogAndCheckCallback(t, &did))
-	if err != nil {
-		t.Fatalf("get failed: %v", err)
-	}
+	_ = fc.Get(t.Context(), []int{1, 2, 3}, makeLogAndCheckCallback(t, &did))
 
 	sort.Ints(did)
 
@@ -187,10 +178,7 @@ func TestFileCache_Stale(t *testing.T) {
 
 	did = make([]int, 0, 2)
 
-	remaining, err := fc.Get(t.Context(), []int{1, 2, 3}, makeLogAndCheckCallback(t, &did))
-	if err != nil {
-		t.Fatalf("get failed: %v", err)
-	}
+	remaining := fc.Get(t.Context(), []int{1, 2, 3}, makeLogAndCheckCallback(t, &did))
 
 	sort.Ints(did)
 
@@ -242,10 +230,7 @@ func TestFileCache_DefaultStaleIf(t *testing.T) {
 
 		var r []int
 
-		r, err = fc.Get(t.Context(), []int{1}, func(_ int, r io.ReadCloser) { _ = r.Close() })
-		if err != nil {
-			t.Fatalf("get failed: %v", err)
-		}
+		r = fc.Get(t.Context(), []int{1}, func(_ int, r io.ReadCloser) { _ = r.Close() })
 
 		refreshedSince := clock.Now().Sub(refreshed).Seconds()
 		staleAt := 60 *
@@ -268,10 +253,7 @@ func TestFileCache_DefaultStaleIf(t *testing.T) {
 				t.Fatalf("putToCache failed: %v", err)
 			}
 
-			r, err = fc.Get(t.Context(), []int{1}, func(_ int, r io.ReadCloser) { _ = r.Close() })
-			if err != nil {
-				t.Fatalf("get failed: %v", err)
-			}
+			r = fc.Get(t.Context(), []int{1}, func(_ int, r io.ReadCloser) { _ = r.Close() })
 
 			if len(r) != 0 {
 				t.Fatalf("still stale")
